@@ -6,6 +6,7 @@ import turtle
 import time
 import json
 import math
+import matplotlib.path as path
 from constants import *
 
 def printWelcomeMsg():
@@ -256,5 +257,32 @@ if __name__ == '__main__':
 
     else:
         pass
+
+    # Organize the boundary into a polygon data structure
+    BOUNDARY = path.Path(ROOM_BOUNDARY)
+
+    # Quick sanity check to make sure all obstacles are within environment 
+    # boundary and to make sure that no obstacles overlap with any other 
+    # obstacles
+    for i, obs in enumerate(ROOM_OBSTACLES):
+        for p in obs: 
+            if not BOUNDARY.contains_point(p):
+                m = '[ERROR]: All obstacles are not contained within ' + \
+                    'environment boundary.'
+                print(m)
+                exit(1)
     
+    # Quick sanity check to make sure start location and end location were 
+    # placed within environment boundary
+    if not BOUNDARY.contains_point(START_LOCATION):
+        m = '[ERROR]: Start location must be contained within the ' + \
+            ' environment boundary.'
+        print(m)
+        exit(1)
+    
+    if not BOUNDARY.contains_point(GOAL_LOCATION):
+        m = '[ERROR]: Goal location must be contained within the ' + \
+            ' environment boundary.'
+        print(m)
+        exit(1)
 
