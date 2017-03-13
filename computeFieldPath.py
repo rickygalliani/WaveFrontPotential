@@ -21,7 +21,7 @@ with open(ROOM_OBSTACLES_OUTPUT, 'r') as f:
     ROOM_OBSTACLES = json.load(f)
 with open(LOCATION_OUTPUT, 'r') as f: 
     (START_X, START_Y), (GOAL_X, GOAL_Y) = json.load(f)
-print('Read in environment data...')
+print('\nRead in environment data...')
 
 # Organize the boundary into a polygon data structure
 BOUNDARY  = path.Path(ROOM_BOUNDARY)

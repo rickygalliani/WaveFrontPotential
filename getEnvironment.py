@@ -6,6 +6,7 @@ import turtle
 import time
 import json
 import math
+import random
 import matplotlib.path as path
 from constants import *
 
@@ -41,7 +42,7 @@ def printCustomizeInstructions():
     print('  5. Click on the goal location of your robot.\n')
     print('  6. Right-click to save your environment, boundaries, and \n' + 
           '     and start/goal locations.')
-    print('\n\n' + '-' * 65 + '\n\n')
+    print('\n\n' + '-' * 65 + '\n')
 
 def euclideanDistance(p1x, p1y, p2x, p2y):
     '''
@@ -54,7 +55,7 @@ def mouseClick(x, y):
     Handle mouse-click events.
     '''
     # Global variables
-    global ROOM_BOUNDARY, ROOM_OBSTACLES
+    global ROOM_BOUNDARY, ROOM_OBSTACLES, BOUNDARY
     global DRAWING_BOUNDARY, DRAWING_OBSTACLE
     global START_X, START_Y
     global PICKED_START, PICKED_GOAL
@@ -194,27 +195,163 @@ def rightClick(x, y):
     global DONE
 
     if DONE: 
-        # We're done gettting the environment from the user, dump the data 
-        # and close the window
-        dumpData()
-
-        # Leave user with a message telling them we saved the data related 
-        # to their environment
-        print('  [SUCCESS]: Your custom polygonal environment was saved.\n\n' + 
-              '             You can access the data for your environment\n' + 
-              '             in the following files: \n' + 
-              '                        - ' + ROOM_BOUNDARY_OUTPUT + '\n'
-              '                        - ' + ROOM_OBSTACLES_OUTPUT + '\n'
-              '                        - ' + LOCATION_OUTPUT)
-        print('\n\n' + '-' * 65 + '\n')
-
         # Quit the window
+        saveWindow()
         turtle.bye()
 
     elif not PICKED_START:
         turtle.penup()
         turtle.goto(START_X, START_Y)
         PICKED_START = True
+
+def saveWindow():
+    '''
+    Saves the turtle window as a .ps file which can be converted to a .png 
+    file.
+    '''
+    cv = turtle.getcanvas()
+    cv.postscript(file='environment.ps', colormode='color')
+
+def drawPolygon(turtle, x, y, numSide, radius):
+    '''
+    Draws a random polygon at the given location with the given radius and the 
+    given number of sides and returns the points in the obstacle.
+    '''
+    obstacle = [(x, y)]
+    sideLen = 2 * radius * math.sin (math.pi / numSide)
+    angle = 360 / numSide
+    turtle.penup()
+    turtle.goto(x, y)
+    turtle.pendown()
+    turtle.fill(True)
+    turtle.fillcolor('black')
+    for iter in range (numSide):
+        turtle.forward(sideLen)
+        turtle.left(angle)
+        obstacle.append(turtle.pos())
+    turtle.fill(False)
+    return obstacle
+
+def randomEnvironmentGenerator():
+    '''
+    Draws a random environment.
+    '''
+    # Global variables
+    global ROOM_BOUNDARY, ROOM_OBSTACLES
+    global DRAWING_BOUNDARY, DRAWING_OBSTACLE
+    global START_X, START_Y
+    global START_LOCATION, GOAL_LOCATION
+
+    # Randomly draw a number of vertices, making sure the selection is even
+    numEnvVertices = int((random.choice(range(4, MAX_NUM_ENV_VERTICES)) / 2) * 2)
+    numObstacles = random.choice(range(1, MAX_NUM_OBSTACLES))
+
+    # Move about the environment in a clockwise fashion, randomly picking a 
+    # point in each of the numEnvVertices block regions in the environment
+    bSize = int(WINDOW_SIZE / numEnvVertices)
+    offSet = int(WINDOW_SIZE / 4)
+
+    # Define constraints on boundaries, moving in clockwise fashion
+    regions = []
+    for i in range(numEnvVertices):
+        if i < numEnvVertices / 2: 
+            xMin = bSize * i - offSet
+            xMax = bSize * (i + 1) - offSet
+        else: 
+            c = (numEnvVertices - 1) - i
+            xMin = bSize * c - offSet
+            xMax = bSize * (c + 1) - offSet
+        yMin = - (i / (numEnvVertices / 2)) * offSet
+        yMax = yMin + offSet
+        regions.append(((xMin, xMax), (yMin, yMax)))
+
+    # Prepare the turtle to draw the environment boundary on the window
+    startX, startY = 0, 0
+    turtle.pensize(4)
+    turtle.pencolor('blue')
+    turtle.fill(True)
+    turtle.fillcolor('white')
+
+    # Randomly pick a point in each region and go to it.
+    for i, ((xMin, xMax), (yMin, yMax)) in enumerate(regions): 
+        curX = int(random.uniform(xMin, xMax))
+        curY = int(random.uniform(yMin, yMax))
+        turtle.goto(curX, curY)
+        turtle.pendown()
+        ROOM_BOUNDARY.append((curX, curY))
+
+    # Close the loop and fill the environment boundary with white
+    ROOM_BOUNDARY.append((ROOM_BOUNDARY[0][0], ROOM_BOUNDARY[0][1]))
+    turtle.goto(ROOM_BOUNDARY[0][0], ROOM_BOUNDARY[0][1])
+    turtle.fill(False)
+
+    # Organize the boundary into a polygon data structure
+    boundary = path.Path(ROOM_BOUNDARY)
+
+    # Pick the penup and move it to the center before we draw the obstacles
+    turtle.penup()
+    turtle.pencolor('black')
+    turtle.pensize(2)
+    turtle.goto(0, 0)
+
+    # Minimum and maximum possible coordinates
+    minX = min([x for (x,y) in ROOM_BOUNDARY])
+    maxX = max([x for (x,y) in ROOM_BOUNDARY])
+    minY = min([y for (x,y) in ROOM_BOUNDARY])
+    maxY = max([y for (x,y) in ROOM_BOUNDARY])
+
+    # Draw all of the obstacles in the environment
+    for obs in range(numObstacles):
+        numSides = random.choice(range(3, MAX_NUM_OBSTACLE_SIDES))
+        radius = random.uniform(MIN_OBSTACLE_RADIUS, MAX_OBSTACLE_RADIUS)
+
+        # Keep resampling points until we find a reasonable one
+        x, y = random.uniform(minX, maxX), random.uniform(minY, maxY)
+        while not (boundary.contains_point((x, y)) and \
+                   boundary.contains_point((x + 2 * radius, y)) and \
+                   boundary.contains_point((x + 2 * radius, y + 2 * radius)) and \
+                   boundary.contains_point((x, y + 2 * radius))):
+            x, y = random.uniform(minX, maxX), random.uniform(minY, maxY)
+        
+        # We found a point that's sufficiently far away fromt he boundary of 
+        # the environment given this radius so draw the polygon
+        obstacle = drawPolygon(turtle, x, y, numSides, radius)
+        ROOM_OBSTACLES.append(obstacle)
+
+    # Prepare the turtle to pick the start and goal location
+    turtle.penup()
+    turtle.goto(0, 0)
+    turtle.shapesize(1.0, 1.0)
+    turtle.pensize(10)
+
+    # Pick the start location 
+    START_LOCATION = random.uniform(minX, maxX), random.uniform(minY, maxY)
+    while not boundary.contains_point(START_LOCATION):
+        START_LOCATION = random.uniform(minX, maxX), random.uniform(minY, maxY)
+
+    # Place the start dot on the window
+    turtle.goto(START_LOCATION[0], START_LOCATION[1])
+    turtle.pencolor('green')
+    turtle.fillcolor('green')
+    turtle.dot()
+
+    # Pick the goal location
+    GOAL_LOCATION = random.uniform(minX, maxX), random.uniform(minY, maxY)
+    while not boundary.contains_point(GOAL_LOCATION):
+        GOAL_LOCATION = random.uniform(minX, maxX), random.uniform(minY, maxY)
+
+    # Place the start dot on the window
+    turtle.goto(GOAL_LOCATION[0], GOAL_LOCATION[1])
+    turtle.pencolor('red')
+    turtle.fillcolor('red')
+    turtle.dot()
+
+    # Let user take in environment
+    time.sleep(3)
+    saveWindow()
+    turtle.bye()
+
+    print('\n\n' + '-' * 65 + '\n')
 
 # Global variables
 ROOM_BOUNDARY    = [] # List of vertices in the polygonal boundary of the room
@@ -240,33 +377,35 @@ if __name__ == '__main__':
     customizeResponse = raw_input(q)
     customizeInput = customizeResponse == '' or customizeResponse == 'Y'
 
+    turtle.setup(WINDOW_SIZE, WINDOW_SIZE)  # Set window size
+    turtle.bgcolor('gray')
+    turtle.shape('circle')
+    turtle.shapesize(0.25, 0.25)
+    window = turtle.Screen() # Get reference to window
+    turtle.penup() # Start with the pen up, put it down once user clicks
+    turtle.fillcolor('black')
+
     # If user wants to customize their polygonal room and polygonal obstacles
     if customizeInput:
         printCustomizeInstructions() # Print instructions for user to console
-        turtle.setup(WINDOW_SIZE, WINDOW_SIZE)  # Set window size
         turtle.title('Environment Customization Window') # Set title of window
-        turtle.bgcolor('gray')
-        turtle.shape('circle')
-        turtle.shapesize(0.25, 0.25)
-        window = turtle.Screen() # Get reference to window
-        turtle.penup() # Start with the pen up, put it down once user clicks
-        turtle.fillcolor('black')
         window.onclick(mouseClick) # Update GUI when a user clicks
         window.onclick(rightClick, 2) # Handle right-click events
         turtle.mainloop()
 
     else:
-        pass
+        turtle.title('Environment Randomization Window') # Set title of window
+        randomEnvironmentGenerator()
 
     # Organize the boundary into a polygon data structure
-    BOUNDARY = path.Path(ROOM_BOUNDARY)
+    boundary = path.Path(ROOM_BOUNDARY)
 
     # Quick sanity check to make sure all obstacles are within environment 
     # boundary and to make sure that no obstacles overlap with any other 
     # obstacles
     for i, obs in enumerate(ROOM_OBSTACLES):
         for p in obs: 
-            if not BOUNDARY.contains_point(p):
+            if not boundary.contains_point(p):
                 m = '[ERROR]: All obstacles are not contained within ' + \
                     'environment boundary.'
                 print(m)
@@ -274,15 +413,29 @@ if __name__ == '__main__':
     
     # Quick sanity check to make sure start location and end location were 
     # placed within environment boundary
-    if not BOUNDARY.contains_point(START_LOCATION):
+    if not boundary.contains_point(START_LOCATION):
         m = '[ERROR]: Start location must be contained within the ' + \
             ' environment boundary.'
         print(m)
         exit(1)
     
-    if not BOUNDARY.contains_point(GOAL_LOCATION):
+    if not boundary.contains_point(GOAL_LOCATION):
         m = '[ERROR]: Goal location must be contained within the ' + \
             ' environment boundary.'
         print(m)
         exit(1)
+
+    # We're done gettting the environment from the user, dump the data 
+    # and close the window
+    dumpData()
+
+    # Leave user with a message telling them we saved the data related 
+    # to their environment
+    print('\n  [SUCCESS]: Your custom polygonal environment was saved.\n\n' + 
+          '             You can access the data for your environment\n' + 
+          '             in the following files: \n' + 
+          '                        - ' + ROOM_BOUNDARY_OUTPUT + '\n'
+          '                        - ' + ROOM_OBSTACLES_OUTPUT + '\n'
+          '                        - ' + LOCATION_OUTPUT)
+    print('\n\n' + '-' * 65 + '\n')
 
