@@ -28,21 +28,21 @@ BOUNDARY  = path.Path(ROOM_BOUNDARY)
 OBSTACLES = [path.Path(obs) for obs in ROOM_OBSTACLES]
 
 # Create a matrix to store the potential
-WINDOW_SIDE = np.arange(-WINDOW_MAX_SIZE / 2.0, WINDOW_MAX_SIZE / 2.0, D)
+WINDOW_SIDE = np.arange(-WINDOW_SIZE / 2.0, WINDOW_SIZE / 2.0, D)
 CELLS = [[0 for x in WINDOW_SIDE] for y in WINDOW_SIDE]
-MARKED = [[False for x in WINDOW_SIDE] for y in WINDOW_SIDE]
+MARKED = [[FREE_SPACE for x in WINDOW_SIDE] for y in WINDOW_SIDE]
 TOTAL_CELLS = 1.0 * len(CELLS) * len(CELLS[0])
 
 # Need to fill up queue with points to mark
 QUEUE = []
 
-def getQueueIndexForPoint(p):
+def getIndexForPoint(p):
     '''
     Returns index in QUEUE associated with a given point, p.
     '''
     x, y = p
-    row = len(MARKED) - int((y + WINDOW_MAX_SIZE / 2) / D) - 1
-    col = int((x + WINDOW_MAX_SIZE / 2) / D)
+    row = len(MARKED) - int((y + WINDOW_SIZE / 2) / D) - 1
+    col = int((x + WINDOW_SIZE / 2) / D)
     return row, col
 
 def inQueue(p):
@@ -79,63 +79,33 @@ def addPointsOnInterior(p1, p2):
         pNE = (x + D, y + D)
         pSE = (x + D, y - D)
 
-        # See which side(s) is contained in BOUNDARY
-        pW_  = BOUNDARY.contains_point(pW), pW
-        pE_  = BOUNDARY.contains_point(pE), pE
-        pNW_ = BOUNDARY.contains_point(pNW), pNW
-        pSW_ = BOUNDARY.contains_point(pSW), pSW
-        pNE_ = BOUNDARY.contains_point(pNE), pNE
-        pSE_ = BOUNDARY.contains_point(pSE), pSE
-
         # Find exact cells we need to 
-        ps = [pW_, pE_, pNW_, pSW_, pNE_, pSW_]
+        ps = [pW, pE, pNW, pSW, pNE, pSW]
 
         # Add unmarked cells around the current cell to the queue
-        for p_in, p in ps: 
-            row, col = getQueueIndexForPoint(p)
-            if p_in and not MARKED[row][col] and not inQueue(p):
+        for p in ps: 
+            row, col = getIndexForPoint(p)
+            if MARKED[row][col] == FREE_SPACE and not inQueue(p):
                 QUEUE.append((p, 1))
 
-def attractiveGradient(curX, curY):
-    '''
-    Computes and returns the attractive potential at the current location.
-    '''
-    return [-K * (curX - GOAL_X), -K * (curY - GOAL_Y)]
-
-def repulsiveGradient(curX, curY):
-    '''
-    Computes and returns the repulsive potential at the current location. It 
-    simply looks at the locations around the current location and retuns the 
-    direction with the highest value, the direction that is the most clear of 
-    obstacles.
-    '''
-    # Define points in every direction of current point
-    pN  = curX, curY + D
-    pS  = curX, curY - D
-    pW  = curX - D, curY
-    pE  = curX + D, curY
-    pNW = curX - D, curY + D
-    pSW = curX - D, curY - D
-    pNE = curX + D, curY + D
-    pSE = curX + D, curY - D
-    ps  = [pN, pS, pW, pE, pNW, pSW, pNE, pSE]
-
-    # Find safest neighbor to jump to
-    maxNeighbor = -1
-    maxPotential = -1
-    for p in ps:
-        i, j = getQueueIndexForPoint(p)
-        # Check and make sure we have a valid location
-        if not MARKED[i][j]:
-            continue
-        curPotential = CELLS[i][j]
-        if curPotential > maxPotential:
-            maxPotential = curPotential
-            maxNeighbor = p
-
-    # Set repulsive gradient going towards safest neighbor
-    maxX, maxY = maxNeighbor
-    return [-G * (curX - maxX), -G * (curY - maxY)]
+# Mark all the points that aren't in the boundary
+numMarked = 0
+for x in WINDOW_SIDE:
+    for y in WINDOW_SIDE:
+        row, col = getIndexForPoint((x, y))
+        # If point is not within the boundary of the environment, mark it
+        if not BOUNDARY.contains_point((x, y)):
+            MARKED[row][col] = BOUNDARY_SPACE
+            numMarked += 1
+        else: 
+            for obs in OBSTACLES:
+                # If point is inside one of the obstacles within environment
+                # boundary, mark it
+                if obs.contains_point((x, y)):
+                    MARKED[row][col] = OBSTACLE_SPACE
+                    numMarked += 1
+                    continue
+print('Marked all unreachable points in the environment...')
 
 # Identify points on the interior of the boundary
 p1 = ROOM_BOUNDARY[0]
@@ -152,25 +122,6 @@ for obs in ROOM_OBSTACLES:
         p1 = p2 # Move p1 forward
 print('Computed points on immediate exterior of each obstacle...')
 
-# Mark all the points that aren't in the boundary
-numMarked = 0
-for x in WINDOW_SIDE:
-    for y in WINDOW_SIDE:
-        row, col = getQueueIndexForPoint((x, y))
-        # If point is not within the boundary of the environment, mark it
-        if not BOUNDARY.contains_point((x, y)):
-            MARKED[row][col] = True
-            numMarked += 1
-        else: 
-            for obs in OBSTACLES:
-                # If point is inside one of the obstacles within environment
-                # boundary, mark it
-                if obs.contains_point((x, y)):
-                    MARKED[row][col] = True
-                    numMarked += 1
-                    continue
-print('Marked all unreachable points in the environment...')
-
 # Continuously mark all the cells and set their potential levels until we've 
 # marked every cell
 reachableToMark = TOTAL_CELLS - numMarked
@@ -179,14 +130,15 @@ while len(QUEUE) != 0:
     # Get celll off the queue
     cell, l = QUEUE.pop(0)
     cellX, cellY = cell
+    row, col = getIndexForPoint(cell)
 
-    # Increase the level of the cell
-    row, col = getQueueIndexForPoint(cell)
-    if MARKED[row][col]:
+    # Skip over this cell if it's in a boundary, obstacle, or has been visited
+    if MARKED[row][col] in [BOUNDARY_SPACE, OBSTACLE_SPACE, VISITED_SPACE]:
         continue
 
+    # Add level to this cell's entry and mark it as visited
     CELLS[row][col] = l
-    MARKED[row][col] = True
+    MARKED[row][col] = VISITED_SPACE
     numMarked += 1
 
     # Define points around current point
@@ -202,53 +154,110 @@ while len(QUEUE) != 0:
 
     # Add unmarked cells around the current cell to the queue
     for p in ps: 
-        row, col = getQueueIndexForPoint(p)
-        if not MARKED[row][col] and not inQueue(p):
+        row, col = getIndexForPoint(p)
+        if MARKED[row][col] == FREE_SPACE and not inQueue(p):
             QUEUE.append((p, l + 1))
 
     per = str(round(numMarked / reachableToMark, 3) * 100) 
-    pro = per + '%. ' + str(len(QUEUE)) + ' cells left in queue'
+    pro = per + '% (' + str(len(QUEUE)) + ')'
     m = ('Marking reachable points with their potential. ' + pro + '...    \r')
     sys.stdout.write(m)
     sys.stdout.flush()
 
+print('')
+# Start robot at start location given by user
 curX, curY = START_X, START_Y
-curRow, curCol = getQueueIndexForPoint((curX, curY))
-pathXs, pathYs = [curCol], [curRow]
-# While we're sufficiently far away from goal location
-while euclideanDistance(curX, curY, GOAL_X, GOAL_Y) >= D:
-    # Compute attractive gradient at this point
-    attGradX, attGradY = attractiveGradient(curX, curY)
 
-    # Compute repulsive gradient at this point
-    repGradX, repGradY = repulsiveGradient(curX, curY)
+# Add the start location to the path
+curRow, curCol = getIndexForPoint((curY, curX))
+PATH_XS, PATH_YS = [], []
 
-    # Compute current gradient from attractive and repulsive gradients
-    curGradX = attGradX + repGradX
-    curGradY = attGradY + repGradY
+# Compute distance from current location to goal
+curDist = euclideanDistance(curX, curY, GOAL_X, GOAL_Y)
+totalDist = curDist
 
-    # Move to the next location based on gradient
-    curX = curX + (D * curGradX)
-    curY = curY + (D * curGradY)
+# Keep track of number of steps taken by robot
+stepsTaken = 0
 
-    # Get cell indices for current location
-    curRow, curCol = getQueueIndexForPoint((curX, curY))
-    pathXs.append(curCol)
-    pathYs.append(curRow)
+# While we're sufficiently far away from goal location or haven't taken 
+# the maximum number of steps we allow before giving up
+while curDist >= CLOSE_PATH_THRESHOLD and stepsTaken <= MAX_NUM_STEPS:
+    # Define points in every direction of current point
+    pN  = curX, curY + D
+    pS  = curX, curY - D
+    pW  = curX - D, curY
+    pE  = curX + D, curY
+    pNW = curX - D, curY + D
+    pSW = curX - D, curY - D
+    pNE = curX + D, curY + D
+    pSE = curX + D, curY - D
+    ps  = [pN, pS, pW, pE, pNW, pSW, pNE, pSE]
+
+    maxScore, maxNeighbor, maxRow, maxCol = 0, 0, 0, 0
+    for (pX, pY) in ps:
+        # Get indices of data related to this point
+        row, col = getIndexForPoint((pX, pY))
+
+        # Skip points that are outside boundary of environment and points 
+        # inside an obstacle
+        if MARKED[row][col] == BOUNDARY_SPACE or \
+           MARKED[row][col] == OBSTACLE_SPACE:
+            continue
+
+        # Skip points that are already in the path
+        if (col, int(WINDOW_SIZE / D) - row) in zip(PATH_XS, PATH_YS):
+            continue
+
+        # Compute distance to goal from this point
+        pDist = euclideanDistance(pX, pY, GOAL_X, GOAL_Y)
+        distScore = K * (totalDist - pDist)
+
+        # See what the potential value for this point is
+        potentialScore = G * CELLS[row][col]
+
+        # Score for this neighbor selection
+        curScore = distScore + potentialScore
+
+        # Update new maximum
+        if curScore > maxScore:
+            maxScore = curScore
+            maxNeighbor = pY, pX
+            maxRow, maxCol = row, col
+
+    # Add new location to the path
+    curY, curX = maxNeighbor
+    PATH_XS.append(maxCol)
+    PATH_YS.append(int(WINDOW_SIZE / D) - maxRow)
 
     # Report to console progress of path finding...
+    curDist = euclideanDistance(curX, curY, GOAL_X, GOAL_Y)
+    pro = str(round((totalDist - curDist) / curDist, 3)) + '% ' 
+    pro += '(' + str(stepsTaken) + ' steps, ' + str(round(curDist, 3)) + ' away)'
+    sys.stdout.write('Computing path from start to goal. ' + pro + '...\r')
+    sys.stdout.flush()
 
-print('Computed path from start location to goal...')
+    # Increment the number of total steps so that we don't keep looking for 
+    # paths forever
+    stepsTaken += 1
 
-# Create heatmap
+# Plot heatmap of repulsive potential
 hm = sns.heatmap(CELLS, cmap='YlOrRd', cbar=False, 
                  xticklabels=False, yticklabels=False)
-hm.set_title('Wave Front Potential')
-plt.plot(pathXs, pathYs, linewidth=5)
-# plt.scatter([START_X], [START_Y], s=100, c='b')
-# plt.scatter([GOAL_X], [GOAL_Y], s=100, c='b')
+hm.set_title('Wave Front Potential and Path')
+
+# Plot robot's path from start to goal
+plt.plot(PATH_XS, PATH_YS, linewidth=3)
+
+# Compute cells associated with start and goal locations, then plot start and 
+# goal locations
+startRow, startCol = getIndexForPoint((START_X, START_Y))
+goalRow, goalCol = getIndexForPoint((GOAL_X, GOAL_Y))
+plt.plot([startCol], [int(WINDOW_SIZE / D) - startRow], marker='o', color='green', markersize=5)
+plt.plot([goalCol], [int(WINDOW_SIZE / D) - goalRow], marker='o', color='red', markersize=5)
+
+# Save plot
 plt.savefig('wavefront_potential.png')
-print('Generated heatmap of field and path from start to goal...')
+print('\nGenerated heatmap of field and path from start to goal...')
 
 elapsedTime = str(round(time.time() - startTime, 3))
 print('\n[SUCCESS]: ' + elapsedTime + ' seconds...\n')

@@ -242,7 +242,7 @@ if __name__ == '__main__':
     # If user wants to customize their polygonal room and polygonal obstacles
     if customizeInput:
         printCustomizeInstructions() # Print instructions for user to console
-        turtle.setup(WINDOW_MAX_SIZE, WINDOW_MAX_SIZE)  # Set window size
+        turtle.setup(WINDOW_SIZE, WINDOW_SIZE)  # Set window size
         turtle.title('Environment Customization Window') # Set title of window
         turtle.bgcolor('gray')
         turtle.shape('circle')
