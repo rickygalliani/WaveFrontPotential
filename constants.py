@@ -9,7 +9,7 @@ WINDOW_LENGTH         = WINDOW_SIZE / D
 CLOSE_LOOP_THRESHOLD  = 2.5
 CLOSE_PATH_THRESHOLD  = 10.0
 K                     = 1.0
-G                     = 6.5
+G                     = 7.0
 
 BOUNDARY_SPACE        = 0
 OBSTACLE_SPACE        = 1
