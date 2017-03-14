@@ -193,7 +193,7 @@ while curDist >= CLOSE_PATH_THRESHOLD and stepsTaken <= MAX_NUM_STEPS:
     pSE = curX + D, curY - D
     ps  = [pN, pS, pW, pE, pNW, pSW, pNE, pSE]
 
-    maxScore, maxNeighbor, maxRow, maxCol = 0, 0, 0, 0
+    maxScore, maxNeighbor = 0, 0
     for (pX, pY) in ps:
         # Get indices of data related to this point
         row, col = getIndexForPoint((pX, pY))
@@ -205,7 +205,7 @@ while curDist >= CLOSE_PATH_THRESHOLD and stepsTaken <= MAX_NUM_STEPS:
             continue
 
         # Skip points that are already in the path
-        if (col, int(WINDOW_SIZE / D) - row) in zip(PATH_XS, PATH_YS):
+        if (pX, pY) in zip(PATH_XS, PATH_YS):
             continue
 
         # Compute distance to goal from this point
@@ -215,19 +215,27 @@ while curDist >= CLOSE_PATH_THRESHOLD and stepsTaken <= MAX_NUM_STEPS:
         # See what the potential value for this point is
         potentialScore = G * CELLS[row][col]
 
+        # Deduct points if we're just going to places we've already been
+        originalityScore = sum([euclideanDistance(pX, pY, pathX, pathY) for \
+                                (pathX, pathY) in zip(PATH_XS, PATH_YS)]) 
+        # Normalize and multiply by the originality factor
+        originalityScore *= (O / (len(PATH_XS) + 1)) 
+
         # Score for this neighbor selection
-        curScore = distScore + potentialScore
+        curScore = distScore + potentialScore + originalityScore
 
         # Update new maximum
         if curScore > maxScore:
             maxScore = curScore
             maxNeighbor = pY, pX
-            maxRow, maxCol = row, col
+
+    if maxNeighbor == 0:
+        break
 
     # Add new location to the path
     curY, curX = maxNeighbor
-    PATH_XS.append(maxCol)
-    PATH_YS.append(int(WINDOW_SIZE / D) - maxRow)
+    PATH_XS.append(curX)
+    PATH_YS.append(curY)
 
     # Report to console progress of path finding...
     curDist = euclideanDistance(curX, curY, GOAL_X, GOAL_Y)
@@ -239,6 +247,14 @@ while curDist >= CLOSE_PATH_THRESHOLD and stepsTaken <= MAX_NUM_STEPS:
     # Increment the number of total steps so that we don't keep looking for 
     # paths forever
     stepsTaken += 1
+
+if euclideanDistance(PATH_XS[-1], PATH_YS[-1], GOAL_X, GOAL_Y) > CLOSE_PATH_THRESHOLD:
+    print('[WARNING]: Algorithm failed to find path from start location to' + \
+          ' goal location.')
+
+# Convert points to their indices 
+PATH_XS = [getIndexForPoint((x, y))[1] for (x, y) in zip(PATH_XS, PATH_YS)]
+PATH_YS = [int(WINDOW_SIZE / D) - getIndexForPoint((x, y))[0] for (x, y) in zip(PATH_XS, PATH_YS)]
 
 # Plot heatmap of repulsive potential
 hm = sns.heatmap(CELLS, cmap='YlOrRd', cbar=False, 
@@ -252,14 +268,17 @@ plt.plot(PATH_XS, PATH_YS, linewidth=3)
 # goal locations
 startRow, startCol = getIndexForPoint((START_X, START_Y))
 goalRow, goalCol = getIndexForPoint((GOAL_X, GOAL_Y))
-plt.plot([startCol], [int(WINDOW_SIZE / D) - startRow], marker='o', color='green', markersize=5)
-plt.plot([goalCol], [int(WINDOW_SIZE / D) - goalRow], marker='o', color='red', markersize=5)
+plt.plot([startCol], [int(WINDOW_SIZE / D) - startRow], marker='o', 
+         color='green', markersize=5)
+plt.plot([goalCol], [int(WINDOW_SIZE / D) - goalRow], marker='o', 
+         color='red', markersize=5)
 
 # Save plot
 plt.savefig('wavefront_potential.png')
-print('\nGenerated heatmap of field and path from start to goal...')
+print('Generated heatmap of field and path from start to goal...')
 
 elapsedTime = str(round(time.time() - startTime, 3))
+print('\n\n' + '-' * 65 + '\n')
 print('\n[SUCCESS]: ' + elapsedTime + ' seconds...\n')
 
 plt.show()

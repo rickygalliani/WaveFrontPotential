@@ -308,9 +308,9 @@ def randomEnvironmentGenerator():
         # Keep resampling points until we find a reasonable one
         x, y = random.uniform(minX, maxX), random.uniform(minY, maxY)
         while not (boundary.contains_point((x, y)) and \
-                   boundary.contains_point((x + 2 * radius, y)) and \
-                   boundary.contains_point((x + 2 * radius, y + 2 * radius)) and \
-                   boundary.contains_point((x, y + 2 * radius))):
+                   boundary.contains_point((x + P * radius, y)) and \
+                   boundary.contains_point((x + P * radius, y + P * radius)) and \
+                   boundary.contains_point((x, y + P * radius))):
             x, y = random.uniform(minX, maxX), random.uniform(minY, maxY)
         
         # We found a point that's sufficiently far away fromt he boundary of 
@@ -410,6 +410,18 @@ if __name__ == '__main__':
                     'environment boundary.'
                 print(m)
                 exit(1)
+
+        # Make sure start and goal location are not placed within an obstacle
+        obs = path.Path(obs)
+        if obs.contains_point(START_LOCATION):
+            m = '[ERROR]: Start location is contained within an obstacle.'
+            print(m)
+            exit(1)
+        if obs.contains_point(GOAL_LOCATION):
+            m = '[ERROR]: Goal location is contained within an obstacle.'
+            print(m)
+            exit(1)
+
     
     # Quick sanity check to make sure start location and end location were 
     # placed within environment boundary
